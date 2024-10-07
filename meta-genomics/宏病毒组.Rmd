@@ -1,0 +1,358 @@
+---
+output: 
+  html_document: 
+    toc: yes
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# 宏病毒组
+
+## 1. 前言
+
+病毒宏基因组测序又称宏病毒组（Virome），是在宏基因组学理论的基础上，结合现有的病毒分子生物学检测技术而兴起的一个新的学科分支。
+
+宏病毒组直接以样本中所有病毒的遗传物质为研究对象，首先富集病毒颗粒再获取基因组序列信息后鉴定其中所有的病毒组成及其相对丰度，**是一种发现新病毒、病毒感染预警和控制的有力手段，在病毒的起源和进化模式、遗传多样性和地理分布、以及病毒和宿主的相互关系等研究领域都具有重要意义**。
+
+宏病毒组研究可应用于人体或动物血液、组织、粪便等样本，植物组织样本，以及水体、土壤等各种环境样本，用以分析其中的病毒群落。然而，由于病毒基因组普遍较小，病毒核酸在样本中的相对含量非常低，宿主的基因组序列干扰严重，且已知病毒的数量和基因组信息有限等问题，使得宏病毒组研究从样本制备到数据分析都存在着一定的困难。
+
+```{r include=FALSE}
+library(DiagrammeR)
+library(tidyverse)
+```
+
+```{r echo=FALSE}
+mermaid(diagram = "
+        graph TB
+    A((下机数据)) --> B(质量控制-Fastp/Trimmomatic)
+    B --> C(去除宿主序列-BWA)
+    C --> D((整洁数据))
+    D --> E(组装contig-MEGAHIT)
+    E --> F((contigs数据))
+    F --> G(CheckV identify)
+    F --> H(Virsorter2 identify)
+    G --> I(过滤)
+    H --> I
+    I --> J(去重)
+    J --> K(物种注释-PhaGCN2)
+    K --> L(病毒丰度分析)
+    K --> M(病毒基因预测&功能注释)
+    K --> N(病毒-宿主分析-CHERRY,PHP)
+        ", 
+        height =1000, width ='90%'
+        )
+```
+
+### 关于人体中的病毒群落
+
+病毒被认为是地球上最丰富、最多样化的生物实体，地球上估计有
+$10^{31}$个颗粒。人类病毒组同样庞大而复杂，每个人类个体由大约 $10^{13}$
+个颗粒组成，具有很大的异质性。近年来，使用宏基因组测序和其他方法对人类病毒组的研究阐明了人类不同身体部位的病毒组多样性、与疾病状态的关系以及早期人类病毒组建立机制的各个方面。尽管人们越来越受到关注，但典型病毒组研究中的大部分序列数据仍然未被识别，这凸显了未探索的病毒"暗物质"的范围。病毒群落状态可能与人类宿主的不良后果有关，而其他状态则是健康的特征。
+
+人类病毒组包括感染细菌的噬菌体、感染其他细胞微生物（如古细菌）的病毒、感染人类细胞的病毒以及以瞬时形式存在于食物中的病毒。
+
+## 2. 获取数据
+
+### 2.0 第二代测序
+
+第二代测序（Next-generation
+sequencing，NGS）又称为高通量测序（High-throughput
+sequencing），是基于PCR和基因芯片发展而来的DNA测序技术。我们都知道一代测序为合成终止测序，而二代测序开创性的引入了可逆终止末端，从而实现边合成边测序（Sequencing
+by
+Synthesis）。二代测序在DNA复制过程中通过捕捉新添加的碱基所携带的特殊标记（一般为荧光分子标记）来确定DNA的序列。由于在二代测序中，单个DNA分子必须扩增成由相同DNA组成的基因簇，然后进行同步复制，来增强荧光信号强度从而读出DNA序列；而随着读长增长，基因簇复制的协同性降低，导致碱基测序质量下降，这严格限制了二代测序的读长（不超过500bp），因此，二代测序具有通量高、读长短的特点。二代测序适合扩增子测序（例如16S、18S、ITS的可变区），而基因组、宏基因组DNA则需要使用鸟枪法（Shotgun
+method）打断成小片段，测序完毕后再使用生物信息学方法进行拼接。
+
+#### 2.0.1 文库构建
+
+文库构建即为测序片段添加接头。无论是PCR产生的片段还是基因组鸟枪法打断的片段都具有特异性（PCR中不同样品反向引物插入了特异性的barcode，因此两端也是特异的），两端缺乏必要的引物因此混合DNA片段不能直接扩增和测序。DNA片段需要加接头修饰才能进行上机测序，这个过程称为二代测序的文库构建。
+
+#### 2.0.2 上机测序
+
+#### 2.0.3 测序数据
+
+### 2.1 测序原始数据基本概念
+
+SE：Single end，检测过程从序列的一端开始测序。
+
+PE：Pair end，检测过程中分别从同一条序列的两端进行测序。
+
+测序深度：测序得到的碱基总量（bp）与基因组大小（Genome）的比值，常用
+X(读作层) 来表示，例如 30X，就是平均每个碱基覆盖 30 次的碱基总量。
+
+### 2.2 SRA数据
+
+SRA(Sequence ReadArchive)数据库是NCBI用于存储二代测序原始数据的子库。
+
+SRA数据按层级结构分为四种：SRP（研究项目/Studies）、SRX（实验设计/Experiments）、SRS（样本信息/Samples）、SRR（测序结果集/Runs）
+
+```{r echo=FALSE}
+mermaid(diagram = "
+        graph TB
+    A(SRR-研究项目) --> B(SRX-实验设计A)
+    A --> C(SRX-实验设计B)
+    B --> D(SRS-样本A1)
+    B --> E(SRS-样本A2)
+    B --> F(SRS-样本0)
+    C --> G(SRS-样本B1)
+    C --> H(SRS-样本B2)
+    C --> F
+    D --> I(SRR-测序结果A1)
+    E --> SRR-测序结果A2
+    F --> SRR-测序结果0
+    G --> SRR-测序结果B1
+    H --> J(SRR-测序结果B2)
+        ", 
+        height =200, width ='150%'
+)
+        
+```
+
+### 2.3 SRA-Toolkit
+
+```{bash eval=FALSE, include=TRUE}
+# 下载单个下机数据
+prefetch SRR13206447
+# 向SRA文件转换为fastq文件
+fastq-dump SRR13206447 -O ./
+```
+
+### 2.4 fastq格式序列
+
+概述：FASTQ（Fast Quality
+Score）文件格式是一种用于存储测序数据的文本格式，通常用于存储DNA或RNA测序结果。FASTQ文件包括序列数据和与每个碱基相关的质量分数信息，以便在测序数据分析中进行质量控制和序列比对。
+后缀：fastq, fq
+
+```         
+@SRR13206447.1 1 length=250 
+TAAAAAGCTACGAACAACTTGCTCATCATCGCCTTCTTGCTGCCATTGCTCCATCCACTCAAACAAGTTCATGTCTTTTTCAAATTCGTCGGCATGATCTTGTGCGTAGTAGCCAATGTTAGCGTTTTCAGACCACTTAAATTCACCCGCTTTTGGCGCAAGTTTTCCTGCCAACGTATTAAGTAGCGTTGTTTTACCCACGCCGTTTTCACCAATTATGGCAATGCGCTCGCCTACTTCTACTAAACC 
++SRR13206447.1 1 length=250 
+<DDDIIIIIIHIIIIIIIIIIHIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIHIIIIIIIIIHHIHIIIIIIIIIIIIIIHIHIIIIIIIIIHIIIDGHIIIIIIIIIIIIIIIIIIIIIIIIIGIIHIHIIIIHHIIIHIIFHHIIIIIIIEHHHHHIHIIIIHIIEHHIHIHHIEHIIIIEHIIIHIHIHEE?GHHIGDHHHHEEHHIIIHHHCHHGHIIGH=DDHGHHHHIGHHEHH@G@F@
+```
+
+1\.
+序列标识符。以"\@"字符开头，后面跟着该序列的名称或标识符，通常包含有关测序样本的信息。
+
+2\. 序列。序列数据行包含DNA或RNA序列的字符序列，由A、T、C、G等表示碱基。
+
+3\.
+分隔符。分隔行通常由一个加号（"+"）开头，后面跟着与序列数据行对应的描述符。
+
+4\.
+读取碱基的质量值。质量分数行包含与序列数据行中的每个碱基相关的质量分数。质量分数通常以ASCII字符表示，表示测序仪器对每个碱基的测序质量。
+
+```{bash eval=FALSE, include=TRUE}
+# 将SRA数据转换为fastq格式数据
+# 参数--split-3表示双端测序数据
+fastq-dump --split-3 SRR13206447
+```
+
+```         
+Read 6490988 spots for SRR13206447 Written 6490988 spots for SRR13206447
+
+real 89m51.179s user 2m45.311s sys 0m28.619s
+```
+
+### 2.5 fasta格式序列
+
+概述：FASTA文件格式是一种常用于存储生物序列信息（如DNA、RNA或蛋白质序列）的文本格式（主要是把序列储存到数据库中的一种形式）。FASTA文件通常用于存储和共享生物学数据，如基因序列或蛋白质序列。
+
+后缀：fa,fasta,fna
+
+格式：FASTA文件可以包含一个或多个序列，每个序列都以一个描述行和一个或多个序列数据行组成。多个序列可以依次排列在FASTA文件中。
+
+1.  描述行。
+2.  序列数据行。
+
+```         
+>seq1
+AAATTCACCCGCTTTTGGCG
+>seq2
+GTCTTTTTCAAATTCGTCG
+>seq3
+ATCTTGTGCGTAGTAGCCAATG
+```
+
+## 3. 数据质控
+
+### 3.1 低质量碱基过滤
+
+```{bash eval=FALSE, include=TRUE}
+# --in1 输入文件1
+# --in2 输入文件2
+# --out1 输出文件1
+# --out2 输出文件2
+# -j json格式的结果报告
+# -h html格式的结果报告
+# -w 运行线程数
+# -5 从read的5'端至末尾移动窗口，去除窗口中平均质量值小于'<'阈值的碱基
+# --cut_window_size 窗口大小，计算每个窗口中的平均碱基质量，切除低于阈值的窗口
+# --cut_mean_quality 窗口平均碱基阈值
+# --length_required 设置序列的最小长度，丢弃低于此长度的序列
+fastp --in1 source_data/SRR13206447_1.fastq  --in2 source_data/SRR13206447_2.fastq --out1 source_data/clean.1.fq --out2 source_data/clean.2.fq -j clean.json -h clean.html -w 4 -5 --cut_window_size 4 --cut_mean_quality 20 --length_required 50 -D
+```
+
+```         
+real 0m37.593s user 2m41.437s sys 0m18.053s
+```
+
+### 3.2 质控质量评估
+
+```{bash eval=FALSE, include=TRUE}
+seqkit stat -T source_data/clean.1.fq source_data/clean.2.fq source_data/SRR13206447_1.fastq source_data/SRR13206447_2.fastq -o stat
+```
+
+```         
+processed files: 4 / 4 [============================] ETA: 0s. done
+
+real 0m5.181s user 0m15.138s sys 0m2.454s
+```
+
+```{r echo=FALSE}
+seq.stat <- read.table("~/liujingpeng/metavirome/stat",header = T)
+seq.stat %>% knitr::kable()
+```
+
+#### seqkit：实现序列统计、格式转换、长度筛选、质量值转换等的工具包
+
+```         
+amplicon        通过引物检索扩增子(或其周围的特定区域)
+bam             检查和在线绘制BAM记录文件的直方图
+common          通过id/名称/序列查找多个文件的公共序列
+concat          连接多个文件中具有相同ID的序列
+convert         转换FASTQ质量编码格式：支持格式包括：桑格，Solexa和Illumina
+duplicate       重复序列N次
+faidx           创建FASTA索引文件并提取子序列
+fish            使用局部比对在较大的序列中寻找短序列
+fq2fa           转换FASTQ到FASTA
+fx2tab          将FASTA/Q转换为表格格式(包含长度/GC含量/GC偏好)
+genautocomplete 生成shell自动完成脚本
+grep            通过ID/name/sequence/sequence motif搜索序列，允许错配
+head            打印第一条序列
+help            打印帮助信息
+locate          定位序列，或者motifs，允许错配
+mutate          编辑序列(点突变、插入、删除)
+pair            匹配双端序列文件
+range           打印一个范围内的序列
+rename          重命名重复序列ID
+replace         使用正则表达式修改名称或者序列
+restart         重置环状基因组的起始位置
+rmdup           通过id/名称/序列删除重复的序列
+sample          按数量或比例对序列进行抽样
+sana            清理损坏的单行fastq文件
+scat            real time recursive concatenation and streaming of fastx files
+seq             转换序列(反向，补充，提取ID…)
+shuffle         随机序列
+sliding         序列滑窗提取，支持环形基因组
+sort            按id/名称/序列/长度排序序列
+split           按id/seq区域/大小/部件将序列拆分为文件(主要用于FASTA)
+split2          按序列数量/文件数将序列拆分为多个文件(FASTA, PE/SE FASTQ)
+stats           FASTA/Q文件的简单统计
+subseq          通过region/gtf/bed得到子序列，包括侧翼序列
+tab2fx          转换表格格式为FASTA/Q格式
+translate       翻译DNA/RNA到蛋白质序列(支持歧义碱基)
+version         打印版本信息并检查是否更新
+watch           序列特征的监测和在线直方图
+```
+
+```{bash eval=FALSE, include=TRUE}
+# 通过一对引物检索扩增子
+seqkit amplicon -F TTC -R CGC test_seq.fa
+```
+
+```{bash eval=FALSE, include=TRUE}
+# 同时检索多对引物的扩增子
+seqkit amplicon -p test_primers.tsv test_seq.fa --bed
+```
+
+```{bash eval=FALSE, include=TRUE}
+# 根据序列id提取序列
+seqkit grep -f query_seq.id test_seq.fa 
+```
+
+## 4. 序列组装
+
+```{bash eval=FALSE, include=TRUE}
+megahit -1 source_data/clean.1.fq -2 source_data/clean.2.fq -t 8 -m 0.9 --presets meta-large --min-contig-len 300 -o megahit 
+```
+
+```         
+real    110m9.461s
+user    811m32.408s
+sys     1m6.813s
+```
+
+## 5. 评估病毒组质量
+
+```{bash eval=FALSE, include=TRUE}
+checkv download_database checkv_db/
+```
+
+```{bash eval=FALSE, include=TRUE}
+export CHECKVDB=~/liujingpeng/metavirome/checkv_db/checkv-db-v1.5
+checkv end_to_end final.contigs.fa checkv-out/
+```
+
+```{r eval=FALSE, include=TRUE}
+# 查看checkv的结果
+checkv_summary <- read_table("~/liujingpeng/metavirome/checkv-out/quality_summary.tsv")
+# 选择病毒基因组completeness大于60的contigs
+virus_genome <-checkv_summary %>% filter(completeness>60) 
+# 导出contigs序列号
+write.table(virus_genome$contig_id, file = "~/liujingpeng/metavirome/virus_contig.id", row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+```{bash eval=FALSE, include=TRUE}
+# 选择completeness大于60的contigs对应的序列
+seqkit grep -f virus_contig.id final.contigs.fa > virus_contig.fa
+```
+
+## 6. 鉴定病毒类别
+
+geNomad在线鉴定
+
+## 7. 丰度定量
+
+Contigs与genes丰度计算是类似的，只不过目标序列不同。组装所得到的contig的丰度可以通过将全部质控后的reads序列map到拼接结果中，统计落到每个contig中的全部reads数目作为contig的丰度。reads的mapping可通过Bowtie2进行。
+
+Bowtie2
+是将测序reads与长参考序列比对工具。适用于将长度大约为50到100或1000字符的reads与相对较长的基因组（如哺乳动物）进行比对。
+
+```{bash eval=FALSE, include=TRUE}
+# 首先根据拼接的contigs构建新的Index
+bowtie2-build --threads 20 virus_contig.fa virus_contig.index/contig.index
+# 接下来将宏基因组测序的全部reads映射到拼接得到的Contigs上，每个reads至多只能分配到一条Contigs上
+bowtie2 -p 20 -x virus_contig.index/contig.index -1 source_data/clean.1.fq -2 source_data/clean.2.fq -S virus.contig.sam --fast
+```
+
+```         
+6129501 reads; of these:
+  6129501 (100.00%) were paired; of these:
+    6039520 (98.53%) aligned concordantly 0 times
+    89918 (1.47%) aligned concordantly exactly 1 time
+    63 (0.00%) aligned concordantly >1 times
+    ----
+    6039520 pairs aligned concordantly 0 times; of these:
+      61656 (1.02%) aligned discordantly 1 time
+    ----
+    5977864 pairs aligned 0 times concordantly or discordantly; of these:
+      11955728 mates make up the pairs; of these:
+        11950145 (99.95%) aligned 0 times
+        5232 (0.04%) aligned exactly 1 time
+        351 (0.00%) aligned >1 times
+2.52% overall alignment rate
+```
+
+```{bash eval=FALSE, include=TRUE}
+# 使用samtools工具将sam文件转化为bam文件
+samtools view -bS --threads 20 virus.contig.sam > contig.bam
+
+# 对bam文件按照比对的位置坐标对reads进行排序
+samtools sort contig.bam -o contig.bam --threads 20
+
+# 要计算coverage首先需要准备bam的index文件
+samtools index contig.bam
+
+# 使用CheckM计算coverage
+checkm coverage -x fasta -m 20 -t 20 bins contigs_coverage.out contig.bam
+```
