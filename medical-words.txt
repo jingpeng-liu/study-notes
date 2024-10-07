@@ -1,0 +1,4 @@
+poliovirus     脊髓灰质炎病毒
+astrovirus     星状病毒
+capsid                  衣壳
+adenovirus          腺病毒
