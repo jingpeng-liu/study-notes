@@ -1,4 +1,11 @@
-poliovirus     脊髓灰质炎病毒
-astrovirus     星状病毒
-capsid                  衣壳
-adenovirus          腺病毒
+poliovirus	脊髓灰质炎病毒
+astrovirus	星状病毒
+capsid	衣壳
+adenovirus	腺病毒
+norovirus	诺如病毒
+allele	等位基因
+arboviruses	虫媒病毒
+bandavirus	带状病毒
+entomologist	昆虫学家
+prefecture	县
+invertebrate	无脊椎的
